@@ -1,17 +1,33 @@
 # Token Presale Contract - ERC20 Fixed-Price Sale
 
-![Solidity](https://img.shields.io/badge/Solidity-0.8.30-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-
-Secure ERC20 token presale contract. Users buy tokens with USDC at a fixed price until presale cap is reached. Owner can withdraw collected funds.
+## Overview
+This Solidity smart contract facilitates a fixed-price ERC20 token presale using USDC as payment. It implements secure token distribution with cap protection and owner-controlled fund withdrawal.
 
 ## Features
-- Fixed-price token sales with configurable cap
-- Proper decimal handling (USDC 6 decimals → Tokens 18 decimals)
-- Owner-only fund withdrawal
-- Real-time tracking of remaining tokens
-- Comprehensive event logging
-- Reentrancy protection through state-first pattern
+-**Fixed Price Sales**: Tokens sold at preset USDC price
+- **Hard Cap Limit**: Maximum token supply enforced
+- **Real-time Tracking**: Tokens sold & remaining visible
+- **Secure Withdrawals**: Owner-only fund collection
+- **Transparent Events**: All transactions logged
+- **Ownership Controls**: OpenZeppelin `Ownable` integration
+- **Decimal Handling**: Automatic USDC (6) → Token (18) conversion
+- **Reentrancy Protection**: State-first security pattern
+
+## Technical Specifications
+- **Solidity Version**: 0.8.30
+- **License**: MIT
+- **Dependencies**:
+  - OpenZeppelin Contracts v5.x:
+    - `@openzeppelin/contracts/token/ERC20/IERC20.sol`
+    - `@openzeppelin/contracts/access/Ownable.sol`
+
+## Deployment Parameters
+| Parameter         | Description                                  | Example Value        |
+|-------------------|----------------------------------------------|----------------------|
+| `_saleToken`      | Address of your custom ERC20 token           | 0xYourTokenAddress  |
+| `_paymentToken`   | USDC contract address (6 decimals)           | 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 |
+| `_pricePerToken`  | Price in USDC (6 decimals)                   | 100000 = 0.10 USDC  |
+| `_saleCap`        | Max tokens to sell (18 decimals)             | 1000000 * 10¹⁸      |
 
 ## Contract Code
 ```solidity
