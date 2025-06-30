@@ -4,7 +4,7 @@
 This Solidity smart contract facilitates a fixed-price ERC20 token presale using USDC as payment. It implements secure token distribution with cap protection and owner-controlled fund withdrawal.
 
 ## Features
--**Fixed Price Sales**: Tokens sold at preset USDC price
+- **Fixed Price Sales**: Tokens sold at preset USDC price
 - **Hard Cap Limit**: Maximum token supply enforced
 - **Real-time Tracking**: Tokens sold & remaining visible
 - **Secure Withdrawals**: Owner-only fund collection
