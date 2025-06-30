@@ -4,9 +4,6 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-event TokensPurchased(address indexed buyer, uint256 usdcAmount, uint256 tokenAmount);
-event FundsWithdrawn(address indexed receiver, uint256 amount);
-
 contract TokenPresale is Ownable {
     // Token being sold (your custom token)
     IERC20 public immutable saleToken;
@@ -22,6 +19,9 @@ contract TokenPresale is Ownable {
 
     // Track how many tokens have been sold
     uint256 public tokensSold;
+
+    event TokensPurchased(address indexed buyer, uint256 usdcAmount, uint256 tokenAmount);
+    event FundsWithdrawn(address indexed receiver, uint256 amount);
 
     constructor(
         address _saleToken,
