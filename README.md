@@ -152,5 +152,3 @@ Check Remaining Tokens
 ```javascript
 const remaining = await presale.remainingTokens();
 ```
-## License
-MIT License
