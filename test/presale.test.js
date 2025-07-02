@@ -7,10 +7,10 @@ describe("🔍 Token Presale Basic Tests", function () {
 
   // Setup runs before each test
   beforeEach(async function () {
-    // 1. GET ACCOUNTS: Always get 2 signers
+    
     [owner, buyer] = await ethers.getSigners();
 
-    // 2. DEPLOY SALE TOKEN (Your custom token)
+    // 2. DEPLOY SALE TOKEN
     const MyToken = await ethers.getContractFactory("MyToken");
     saleToken = await MyToken.deploy();
 
@@ -29,9 +29,7 @@ describe("🔍 Token Presale Basic Tests", function () {
 
     // 5. GRANT MINTER ROLE TO PRESALE
     await saleToken.grantMinterRole(presale.address);
-
-    // 6. FUND BUYER WITH USDC - THIS IS THE CRITICAL FIX
-    // Mint 100 USDC to buyer (100 * 10^6 units)
+    
     await paymentToken.mint(buyer.address, 100 * 10 ** 6);
   });
 
