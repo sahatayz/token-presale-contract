@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+interface IMintableToken is IERC20Metadata {
+    function mint(address to, uint256 amount) external;
+}
 
 contract TokenPresale is Ownable {
+    using SafeERC20 for IERC20Metadata;
     // Token being sold (your custom token)
-    IERC20 public immutable saleToken;
+    IMintableToken public immutable saleToken;
 
     // Payment token (USDC)
-    IERC20 public immutable paymentToken;
+    IERC20Metadata public immutable paymentToken;
 
     // Price per token in USDC (in USDC's decimals)
     uint256 public immutable pricePerToken;
@@ -20,7 +26,14 @@ contract TokenPresale is Ownable {
     // Track how many tokens have been sold
     uint256 public tokensSold;
 
-    event TokensPurchased(address indexed buyer, uint256 usdcAmount, uint256 tokenAmount);
+    uint8 public immutable saleTokenDecimals;
+    uint8 public immutable paymentTokenDecimals;
+
+    event TokensPurchased(
+        address indexed buyer,
+        uint256 usdcAmount,
+        uint256 tokenAmount
+    );
     event FundsWithdrawn(address indexed receiver, uint256 amount);
 
     constructor(
@@ -34,10 +47,12 @@ contract TokenPresale is Ownable {
         require(_pricePerToken > 0, "Price must be > 0");
         require(_saleCap > 0, "Cap must be > 0");
 
-        saleToken = IERC20(_saleToken);
-        paymentToken = IERC20(_paymentToken);
+        saleToken = IMintableToken(_saleToken);
+        paymentToken = IERC20Metadata(_paymentToken);
         pricePerToken = _pricePerToken;
         saleCap = _saleCap;
+        saleTokenDecimals = saleToken.decimals();
+        paymentTokenDecimals = paymentToken.decimals();
     }
 
     function buy(uint256 usdcAmount) public {
@@ -45,7 +60,9 @@ contract TokenPresale is Ownable {
         require(usdcAmount > 0, "USDC amount must be > 0");
 
         // Decimal conversion: (USDC-6 * TOKEN-18) / PRICE-6
-        uint256 tokenAmount = (usdcAmount * 1e18) / pricePerToken;
+
+        uint256 tokenAmount = (usdcAmount * (10 ** saleTokenDecimals)) /
+            (pricePerToken * (10 ** paymentTokenDecimals));
 
         // Prevent fractional token amounts
         require(tokenAmount > 0, "Token amount too small");
@@ -57,16 +74,9 @@ contract TokenPresale is Ownable {
         tokensSold += tokenAmount;
 
         // Transfer USDC from user
-        require(
-            paymentToken.transferFrom(msg.sender, address(this), usdcAmount),
-            "USDC transfer failed"
-        );
+        paymentToken.safeTransferFrom(msg.sender, address(this), usdcAmount);
 
-        // Transfer tokens to user
-        require(
-            saleToken.transfer(msg.sender, tokenAmount),
-            "Token transfer failed"
-        );
+        saleToken.mint(msg.sender, tokenAmount);
 
         emit TokensPurchased(msg.sender, usdcAmount, tokenAmount);
     }
@@ -75,7 +85,7 @@ contract TokenPresale is Ownable {
         require(to != address(0), "Invalid address");
         uint256 balance = paymentToken.balanceOf(address(this));
         require(balance > 0, "No funds available");
-        require(paymentToken.transfer(to, balance), "Withdraw failed");
+        paymentToken.safeTransfer(to, balance);
 
         emit FundsWithdrawn(to, balance);
     }
