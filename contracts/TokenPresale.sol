@@ -62,7 +62,7 @@ contract TokenPresale is Ownable {
         // Decimal conversion: (USDC-6 * TOKEN-18) / PRICE-6
 
         uint256 tokenAmount = (usdcAmount * (10 ** saleTokenDecimals)) /
-            (pricePerToken * (10 ** paymentTokenDecimals));
+            pricePerToken;
 
         // Prevent fractional token amounts
         require(tokenAmount > 0, "Token amount too small");
