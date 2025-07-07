@@ -1,60 +1,59 @@
-# Token Presale Contract - ERC20 Fixed-Price Sale
+# Token Presale System - ERC20 Minting-Based Sale
 
 ## Overview
-This Solidity smart contract facilitates a fixed-price ERC20 token presale using USDC as payment. It implements secure token distribution with cap protection and owner-controlled fund withdrawal.
+This Solidity smart contract system facilitates a fixed-price ERC20 token presale using USDC as payment. The solution features:
+1. **TokenPresale**: Main sale contract with minting capability
+2. **MyToken**: Mintable ERC20 token with role-based access control
+3. **MockUSDC**: Test USDC implementation (6 decimals)
 
-## Features
-- **Fixed Price Sales**: Tokens sold at preset USDC price
-- **Hard Cap Limit**: Maximum token supply enforced
-- **Real-time Tracking**: Tokens sold & remaining visible
-- **Secure Withdrawals**: Owner-only fund collection
-- **Transparent Events**: All transactions logged
-- **Ownership Controls**: OpenZeppelin `Ownable` integration
-- **Decimal Handling**: Automatic USDC (6) → Token (18) conversion
-- **Reentrancy Protection**: State-first security pattern
+## Key features:
+- **Direct token minting** during purchases
+- **Dynamic decimal handling** for different token standards
+- **Secure fund management** with SafeERC20 transfers
+- **Role-based access control** for minting operations
+- **Hard cap enforcement** with real-time tracking
 
 ## Technical Specifications
-- **Solidity Version**: 0.8.30
+- **Solidity Version**: 0.8.30 (Presale), ^0.8.0 (Tokens)
 - **License**: MIT
 - **Dependencies**:
-  - OpenZeppelin Contracts v5.x:
-    - `@openzeppelin/contracts/token/ERC20/IERC20.sol`
-    - `@openzeppelin/contracts/access/Ownable.sol`
+  - OpenZeppelin Contracts 5.x
+  - AccessControl
+  - Ownable
+  - SafeERC20
+  - ERC20
 
-## Deployment Parameters
-| Parameter         | Description                                  | Example Value        |
-|-------------------|----------------------------------------------|----------------------|
-| `_saleToken`      | Address of your custom ERC20 token           | 0xYourTokenAddress  |
-| `_paymentToken`   | USDC contract address (6 decimals)           | 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 |
-| `_pricePerToken`  | Price in USDC (6 decimals)                   | 100000 = 0.10 USDC  |
-| `_saleCap`        | Max tokens to sell (18 decimals)             | 1000000 * 10¹⁸      |
+## Contracts
 
-## Contract Code
+### 1. TokenPresale Contract
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-event TokensPurchased(address indexed buyer, uint256 usdcAmount, uint256 tokenAmount);
-event FundsWithdrawn(address indexed receiver, uint256 amount);
+interface IMintableToken is IERC20Metadata {
+    function mint(address to, uint256 amount) external;
+}
 
 contract TokenPresale is Ownable {
-    // Token being sold (your custom token)
-    IERC20 public immutable saleToken;
-
-    // Payment token (USDC)
-    IERC20 public immutable paymentToken;
-
-    // Price per token in USDC (in USDC's decimals)
+    using SafeERC20 for IERC20Metadata;
+    
+    // Immutable contract parameters
+    IMintableToken public immutable saleToken;
+    IERC20Metadata public immutable paymentToken;
     uint256 public immutable pricePerToken;
-
-    // Maximum tokens to sell (in token's decimals)
     uint256 public immutable saleCap;
-
-    // Track how many tokens have been sold
+    
+    // State variables
     uint256 public tokensSold;
+    uint8 public immutable saleTokenDecimals;
+    uint8 public immutable paymentTokenDecimals;
+
+    event TokensPurchased(address indexed buyer, uint256 usdcAmount, uint256 tokenAmount);
+    event FundsWithdrawn(address indexed receiver, uint256 amount);
 
     constructor(
         address _saleToken,
@@ -67,39 +66,27 @@ contract TokenPresale is Ownable {
         require(_pricePerToken > 0, "Price must be > 0");
         require(_saleCap > 0, "Cap must be > 0");
 
-        saleToken = IERC20(_saleToken);
-        paymentToken = IERC20(_paymentToken);
+        saleToken = IMintableToken(_saleToken);
+        paymentToken = IERC20Metadata(_paymentToken);
         pricePerToken = _pricePerToken;
         saleCap = _saleCap;
+        saleTokenDecimals = saleToken.decimals();
+        paymentTokenDecimals = paymentToken.decimals();
     }
 
     function buy(uint256 usdcAmount) public {
-        // Input validation
         require(usdcAmount > 0, "USDC amount must be > 0");
 
-        // Decimal conversion: (USDC-6 * TOKEN-18) / PRICE-6
-        uint256 tokenAmount = (usdcAmount * 1e18) / pricePerToken;
-
-        // Prevent fractional token amounts
+        // Calculate token amount with decimal conversion
+        uint256 tokenAmount = (usdcAmount * (10 ** saleTokenDecimals)) / 
+                             (pricePerToken * (10 ** paymentTokenDecimals));
+        
         require(tokenAmount > 0, "Token amount too small");
-
-        // Cap check
         require(tokensSold + tokenAmount <= saleCap, "Exceeds sale cap");
 
-        // Update state
         tokensSold += tokenAmount;
-
-        // Transfer USDC from user
-        require(
-            paymentToken.transferFrom(msg.sender, address(this), usdcAmount),
-            "USDC transfer failed"
-        );
-
-        // Transfer tokens to user
-        require(
-            saleToken.transfer(msg.sender, tokenAmount),
-            "Token transfer failed"
-        );
+        paymentToken.safeTransferFrom(msg.sender, address(this), usdcAmount);
+        saleToken.mint(msg.sender, tokenAmount);
 
         emit TokensPurchased(msg.sender, usdcAmount, tokenAmount);
     }
@@ -108,8 +95,7 @@ contract TokenPresale is Ownable {
         require(to != address(0), "Invalid address");
         uint256 balance = paymentToken.balanceOf(address(this));
         require(balance > 0, "No funds available");
-        require(paymentToken.transfer(to, balance), "Withdraw failed");
-
+        paymentToken.safeTransfer(to, balance);
         emit FundsWithdrawn(to, balance);
     }
 
@@ -118,37 +104,200 @@ contract TokenPresale is Ownable {
     }
 }
 ```
-## Deployment
-Set parameters in constructor:
+### Features:
+- **Dynamic Decimal Handling:** Supports tokens with any decimals
+
+- **Mint-on-Purchase:** Tokens created directly during purchase
+
+- **Cap Enforcement:** Strict limit on total tokens sold
+
+- **Secure Withdrawals:** Owner-only USDC fund collection
+
+- **Real-time Tracking:** remainingTokens() view function
+
+
+ | Parameter         | Description                           | Example Value        |
+|-------------------|---------------------------------------|----------------------|
+| `_saleToken`      | Mintable ERC20 token address          | `0xYourTokenAddress` |
+| `_paymentToken`   | USDC contract address (6 decimals)    | `0xA0b869...06eB48`  |
+| `_pricePerToken`  | Price in USDC (6 decimals)            | `500000` (0.50 USDC) |
+| `_saleCap`        | Max tokens to sell (token decimals)   | `1000 * 10¹⁸`        |
+
+### 2. MyToken (Mintable ERC20)
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+
+contract MyToken is ERC20, AccessControl {
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    
+    constructor() ERC20("PresaleToken", "PST") {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
+    }
+    
+    function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+    
+    function grantMinterRole(address account) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        grantRole(MINTER_ROLE, account);
+    }
+}
+```
+### Features:
+- **Role-based Minting:** MINTER_ROLE required to create tokens
+
+- **Custom Symbol:** Deploy with any name/symbol
+
+- **Admin Controls:** Grant/revoke minter privileges
+
+### 3. MockUSDC (Test Token)
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "mUSDC") {
+        _mint(msg.sender, 1_000_000 * (10 ** decimals()));
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 wholeTokens) public {
+        _mint(to, wholeTokens * (10 ** decimals()));
+    }
+}
+```
+### Features:
+- **Fixed 6 Decimals:** Matches real USDC behavior
+
+- **Initial Supply:** Automatically mints 1M tokens to deployer
+
+- **Simple Minting:** Additional tokens can be minted for testing
+
+## Deployment Workflow
+### 1. Deploy Contracts
+```javascript
+// Deploy token
+const MyToken = await ethers.getContractFactory("MyToken");
+const saleToken = await MyToken.deploy();
+
+// Deploy mock USDC
+const MockUSDC = await ethers.getContractFactory("MockUSDC");
+const paymentToken = await MockUSDC.deploy();
+
+// Deploy presale
+const TokenPresale = await ethers.getContractFactory("TokenPresale");
+const presale = await TokenPresale.deploy(
+  saleToken.address,
+  paymentToken.address,
+  500000,       // 0.50 USDC per token
+  ethers.parseEther("1000") // 1000 tokens max
+);
+```
+
+### 2. Configure Permissions
+```javascript
+// Grant minter role to presale contract
+await saleToken.grantMinterRole(presale.address);
+```
+### 3. Prepare Buyers
+```javascript
+// Distribute USDC to buyers (6 decimals)
+await paymentToken.mint(buyer.address, 100_000_000); // 100 USDC
+```
+### Usage Examples
+#### Buy Tokens (Buyer)
 
 ```javascript
-new TokenPresale(
-    tokenAddress,  // Your ERC20 token address
-    usdcAddress,   // USDC contract address
-    1_000_000,     // Price: 1 USDC per token (in 6 decimals)
-    100_000 * 1e18 // Cap: 100,000 tokens (in 18 decimals)
-)
+// Approve USDC spending (6 decimals)
+await paymentToken.approve(presale.address, 10_000_000); // 10 USDC
+// Execute purchase
+await presale.buy(10_000_000);
 ```
-Fund contract with tokens before sale:
-
+#### Withdraw Funds (Owner)
 ```javascript
-// Send saleCap tokens to contract address
-token.transfer(presaleAddress, 100_000 * 1e18);
+await presale.withdrawFunds(ownerAddress);
 ```
-## Usage
-Buy Tokens
-```javascript
-// 1. Approve USDC spending
-usdc.approve(presaleAddress, 10 * 1e6); // Approve 10 USDC
-
-// 2. Purchase tokens
-presale.buy(10 * 1e6); // Buy with 10 USDC (6 decimals)
-```
-Withdraw Funds (Owner)
-```javascript
-presale.withdrawFunds(treasuryAddress);
-```
-Check Remaining Tokens
+#### Check Remaining Supply
 ```javascript
 const remaining = await presale.remainingTokens();
 ```
+## Testing
+The test suite verifies all critical functionality:
+
+```javascript
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("🔍 Token Presale Tests", function () {
+  let owner, buyer;
+  let presale, saleToken, paymentToken;
+
+  beforeEach(async function () {
+    [owner, buyer] = await ethers.getSigners();
+    
+    // Deploy contracts
+    const MyToken = await ethers.getContractFactory("MyToken");
+    saleToken = await MyToken.deploy();
+    
+    const MockUSDC = await ethers.getContractFactory("MockUSDC");
+    paymentToken = await MockUSDC.deploy();
+    
+    const TokenPresale = await ethers.getContractFactory("TokenPresale");
+    presale = await TokenPresale.deploy(
+      saleToken.address,
+      paymentToken.address,
+      500000,
+      ethers.parseEther("1000")
+    );
+    
+    // Setup permissions
+    await saleToken.grantMinterRole(presale.address);
+    await paymentToken.mint(buyer.address, 100 * 10 ** 6);
+  });
+
+  it("Completes successful token purchase", async function () {
+    await paymentToken.connect(buyer).approve(presale.address, 10 * 10 ** 6);
+    await presale.connect(buyer).buy(10 * 10 ** 6);
+    expect(await saleToken.balanceOf(buyer.address)).to.equal(ethers.parseEther("20"));
+  });
+
+  it("Prevents purchases exceeding cap", async function () {
+    await paymentToken.connect(buyer).approve(presale.address, 500 * 10 ** 6);
+    await expect(presale.connect(buyer).buy(500 * 10 ** 6)).to.be.revertedWith("Exceeds sale cap");
+  });
+
+  it("Enforces owner-only withdrawals", async function () {
+    await paymentToken.connect(buyer).approve(presale.address, 10 * 10 ** 6);
+    await presale.connect(buyer).buy(10 * 10 ** 6);
+    await expect(presale.connect(buyer).withdrawFunds(buyer.address)).to.be.reverted;
+  });
+});
+```
+Run tests with:
+
+```bash
+npx hardhat test
+```
+## Security Considerations
+**1. Minter Role:** Revoke minter role from presale after sale concludes
+
+**2. Ownership:** Transfer ownership to multisig for production use
+
+**3. Token Decimals:** Verify token decimal configurations before deployment
+
+**4. Price Calculation:** Test price calculations with different decimal tokens
+
+**5. Cap Management:** Monitor remaining tokens during active sale
+
+## License
+All contracts are MIT Licensed
